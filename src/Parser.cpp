@@ -75,9 +75,74 @@ public:
     }
 };
 
+class IpAddressParser : public Parser {
+    std::unordered_set<uint32_t> src_, dst_;
+public:
+    IpAddressParser(Parser* parent) : Parser(parent) {}
+    virtual void process(const u_char* packet, size_t size) override {
+        const iphdr* header = reinterpret_cast<const iphdr*>(packet);
+        src_.insert(header->saddr);
+        dst_.insert(header->daddr);
+    }
+    virtual void metrics(std::list<Metric>& metrics) const override {
+        metrics.push_back({16, "Unique source ip-address", src_.size() });
+        metrics.push_back({17, "Unique destination ip-address", dst_.size() });
+    }
+};
+
+template<typename T, typename Acc>
+class ChecksumVerifier {
+    Acc acc_{};
+public:
+    void append(T value) {
+        acc_ += value;
+    }
+    bool verify() const {
+        T sum = *(reinterpret_cast<const T*>(&acc_) + 1);
+        sum += static_cast<T>(acc_);
+        return sum ^ 0;
+    }
+};
+
+class L3ChecksumParser : public Parser {
+    uint64_t count_{};
+    static bool verify(const u_char* header, size_t len) {
+        ChecksumVerifier<uint8_t, uint16_t> verifier;
+        for(size_t i = 0; i < len; ++i) {
+            verifier.append(header[i]);
+        }
+        return verifier.verify(); 
+    }
+public:
+    L3ChecksumParser(Parser* parent) : Parser(parent) {}
+    virtual void process(const u_char* packet, size_t size) override {
+        if(verify(packet, sizeof(iphdr))) {
+            count_++;
+        }
+    }
+    virtual void metrics(std::list<Metric>& metrics) const override {
+        metrics.push_back({28, "Correct L3 checksum", count_ });
+    }
+};
+
+class L4ProtocolParser : public Parser {
+public:
+    L4ProtocolParser(Parser* parent) : Parser(parent) {}
+};
+
 class IpParser : public Parser {
 public:
-    IpParser(Parser* parent) : Parser(parent) {}
+    IpParser(Parser* parent) : Parser(parent) {
+        new CounterParser(8, "IPv4", this);
+        new IpAddressParser(this);
+        new L3ChecksumParser(this);
+        new L4ProtocolParser(this);
+    }
+    void process(const u_char* packet, size_t size) override {
+        if(size >= sizeof(iphdr)) {
+            Parser::process(packet, size);
+        }
+    }
 };
 
 class L3ProtocolParser : public Parser {
