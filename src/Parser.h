@@ -14,7 +14,7 @@ public:
     ~Parser();
     Parser(const Parser&) = delete;
     Parser& operator=(const Parser&) = delete;
-    virtual void process(const u_char* packet, size_t size) = 0;
+    virtual void process(const u_char* packet, size_t size);
     virtual void metrics(std::list<Metric>& metrics) const; 
 };
 
