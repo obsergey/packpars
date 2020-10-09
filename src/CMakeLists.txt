@@ -5,6 +5,6 @@ set(CMAKE_CXX_STANDARD 11)
 
 include(FindPCAP.cmake)
 
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES main.cpp Parser.cpp Processor.cpp)
 add_executable(packpars ${SOURCE_FILES})
 target_link_libraries(packpars ${PCAP_LIBRARY})
