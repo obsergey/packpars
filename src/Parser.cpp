@@ -4,9 +4,15 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
 #include <vector>
 
 namespace packpars {
+
+inline bool operator<(const std::pair<size_t, packpars::Parser*>& lhs, size_t rhs) {
+    return lhs.first < rhs;
+}
 
 class CounterParser : public Parser {
     Metric metric_;
@@ -45,14 +51,7 @@ public:
         { 1519, new CounterParser(7, "Size >= 1528", this) }
     } {}
     virtual void process(const u_char* packet, size_t size) override {
-        const auto back = ranges_.end() - 1;
-        for(auto range = ranges_.begin(); range != back; ++range) {
-            if(range->first <= size && size < (range+1)->first) {
-                range->second->process(packet, size);
-                return;
-            }
-        }
-        back->second->process(packet, size);
+        std::lower_bound(ranges_.cbegin(), ranges_.cend(), size)->second->process(packet, size);
     }
 };
 
@@ -121,21 +120,130 @@ public:
         }
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({28, "Correct L3 checksum", count_ });
+        metrics.push_back({27, "Correct L3 checksum", count_ });
+    }
+};
+
+class L4ChecksumParser : public Parser {
+    uint64_t count_;
+    static bool verify(const iphdr* header, const u_char* data, size_t size) {
+        ChecksumVerifier<uint16_t, uint32_t> verifier;
+        const uint16_t* d = reinterpret_cast<const uint16_t*>(data);
+        const size_t ds = size / 2;
+        for(int i = 0; i < ds; i++) {
+            verifier.append(d[i]);
+        }
+        if(ds * 2 != size) {
+            verifier.append(*(data + size - 1));
+        }
+        verifier.append(header->tot_len);
+        verifier.append(header->protocol);
+        verifier.append(header->saddr / 0x10000);
+        verifier.append(header->saddr % 0x10000);
+        verifier.append(header->daddr / 0x10000);
+        verifier.append(header->daddr % 0x10000);
+        return verifier.verify();
+    }
+public:
+    L4ChecksumParser(Parser* parent) : Parser(parent) {}
+    virtual void process(const u_char* packet, size_t size) override {
+        const iphdr* header = reinterpret_cast<const iphdr*>(packet);
+        const uint16_t total = ntohs(header->tot_len);
+        const size_t hlen = header->ihl * 4;
+        if(size >= total && total >= hlen && verify(header, packet + hlen, total - hlen)) {
+            count_++;
+        }
+    }
+    virtual void metrics(std::list<Metric>& metrics) const override {
+        metrics.push_back({29, "Correct L4 checksum", count_ });
+    }
+};
+
+class TcpFlagsParser : public Parser {
+    std::unordered_map<uint8_t, Parser*> flags_;
+    Parser* other_;
+public:
+    TcpFlagsParser(Parser* parent) : Parser(parent), flags_{
+        { TH_SYN, new CounterParser(20, "Tcp flags SYN", this) },
+        { TH_SYN | TH_ACK, new CounterParser(21, "Tcp flags SYN + ACK", this) },
+        { TH_ACK, new CounterParser(22, "Tcp flags ACK", this) },
+        { TH_FIN | TH_ACK, new CounterParser(23, "Tcp flags FIN + ACK", this) },
+        { TH_RST, new CounterParser(24, "Tcp flags RST", this) },
+        { TH_RST | TH_ACK, new CounterParser(25, "Tcp flags RST + ACK", this) }
+    }, other_(new CounterParser(26, "Tcp flags other", this)) {}
+    virtual void process(const u_char* packet, size_t size) override {
+        const tcphdr* header = reinterpret_cast<const tcphdr*>(packet);
+        const auto fnd = flags_.find(header->th_flags);
+        (fnd == flags_.cend() ? other_ : fnd->second)->process(packet, size);
+    }
+};
+
+class TcpParser : public Parser {
+    std::unordered_set<uint16_t> &src_, &dst_;
+public:
+    TcpParser(std::unordered_set<uint16_t>& src, std::unordered_set<uint16_t>& dst, Parser* parent) :
+        Parser(parent), src_(src), dst_(dst) {
+        new TcpFlagsParser(this);
+        new CounterParser(10, "Protocol TCP", this);
+    }
+    virtual void process(const u_char* packet, size_t size) override {
+        if(size >= sizeof(tcphdr)) {
+            Parser::process(packet, size);
+            const tcphdr* header = reinterpret_cast<const tcphdr*>(packet);
+            src_.insert(header->source);
+            dst_.insert(header->dest);
+        }
+    }
+};
+
+class UdpParser : public Parser {
+    std::unordered_set<uint16_t> &src_, &dst_;
+public:
+    UdpParser(std::unordered_set<uint16_t>& src, std::unordered_set<uint16_t>& dst, Parser* parent) :
+        Parser(parent), src_(src), dst_(dst) {
+        new CounterParser(11, "Protocol UDP", this);
+    }
+    virtual void process(const u_char* packet, size_t size) override {
+        if(size >= sizeof(udphdr)) {
+            const udphdr* header = reinterpret_cast<const udphdr*>(packet);
+            src_.insert(header->source);
+            dst_.insert(header->dest);
+        }
     }
 };
 
 class L4ProtocolParser : public Parser {
+    std::unordered_set<uint16_t> src_, dst_;
+    std::unordered_map<uint8_t, Parser*> protos_;
+    Parser* other_;
 public:
-    L4ProtocolParser(Parser* parent) : Parser(parent) {}
+    L4ProtocolParser(Parser* parent) : Parser(parent), protos_{
+        { IPPROTO_TCP, new TcpParser(src_, dst_, this) },
+        { IPPROTO_UDP, new UdpParser(src_, dst_, this) },
+        { IPPROTO_ICMP, new CounterParser(12, "Protocol ICMP", this) }
+    }, other_(new CounterParser(13, "Protocol other L4", this)) {}
+    virtual void process(const u_char* packet, size_t size) override {
+        const iphdr* header = reinterpret_cast<const iphdr*>(packet);
+        const size_t hlen = header->ihl * 4;
+        if(size >= hlen) {
+            const auto fnd = protos_.find(header->protocol);
+            (fnd == protos_.cend() ? other_ : fnd->second)->process(packet + hlen, size - hlen);
+        }
+    }
+    virtual void metrics(std::list<Metric>& metrics) const override {
+        Parser::metrics(metrics);
+        metrics.push_back({18, "Unique source port", src_.size() });
+        metrics.push_back({19, "Unique destination port", dst_.size() });
+    }
 };
 
 class IpParser : public Parser {
 public:
     IpParser(Parser* parent) : Parser(parent) {
-        new CounterParser(8, "IPv4", this);
+        new CounterParser(8, "Protocol IPv4", this);
         new IpAddressParser(this);
         new L3ChecksumParser(this);
+        new L4ChecksumParser(this);
         new L4ProtocolParser(this);
     }
     void process(const u_char* packet, size_t size) override {
@@ -146,22 +254,13 @@ public:
 };
 
 class L3ProtocolParser : public Parser {
-    std::vector<std::pair<uint16_t, Parser*>> protos_;
+    Parser *ip_, *other_;
 public:
-    L3ProtocolParser(Parser* parent) : Parser(parent), protos_{
-        { ETH_P_IP, new IpParser(this) },
-        { 0, new CounterParser(9, "Non-IPv4", this) }
-    } {}
+    L3ProtocolParser(Parser* parent) : Parser(parent),
+        ip_(new IpParser(this)), other_(new CounterParser(9, "Protocol Non-IPv4", this)) {}
     virtual void process(const u_char* packet, size_t size) override {
-        const auto other = protos_.end() - 1;
-        const uint16_t curproto = ntohs(reinterpret_cast<const ethhdr*>(packet)->h_proto);
-        for(auto proto = protos_.begin(); proto != other; ++proto) {
-            if(proto->first == curproto) {
-                proto->second->process(packet + sizeof(ethhdr), size - sizeof(ethhdr));
-                return;
-            }
-        }
-        other->second->process(packet + sizeof(ethhdr), size - sizeof(ethhdr));
+        const uint16_t proto = ntohs(reinterpret_cast<const ethhdr*>(packet)->h_proto);
+        (proto == ETH_P_IP ? ip_ : other_)->process(packet + sizeof(ethhdr), size - sizeof(ethhdr));
     }
 };
 
