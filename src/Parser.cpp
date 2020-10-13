@@ -43,12 +43,12 @@ class SizeParser : public Parser {
     std::vector<std::pair<size_t, Parser*>> ranges_;
 public:
     SizeParser(Parser* parent) : Parser(parent), ranges_{
-        { 0, new CounterParser(2, "Size <= 64", this) },
-        { 65, new CounterParser(3, "Size 65 - 255", this) },
-        { 256, new CounterParser(4, "Size 256 - 511", this) },
-        { 512, new CounterParser(5, "Size 512 - 1023", this) },
-        { 1024, new CounterParser(6, "Size 1024 - 1518", this) },
-        { 1519, new CounterParser(7, "Size >= 1528", this) }
+        { 64, new CounterParser(2, "Size <= 64", this) },
+        { 255, new CounterParser(3, "Size 65 - 255", this) },
+        { 511, new CounterParser(4, "Size 256 - 511", this) },
+        { 1023, new CounterParser(5, "Size 512 - 1023", this) },
+        { 1518, new CounterParser(6, "Size 1024 - 1518", this) },
+        { std::numeric_limits<size_t>::max(), new CounterParser(7, "Size >= 1519", this) }
     } {}
     virtual void process(const u_char* packet, size_t size) override {
         std::lower_bound(ranges_.cbegin(), ranges_.cend(), size)->second->process(packet, size);
@@ -136,12 +136,12 @@ class L4ChecksumParser : public Parser {
         if(ds * 2 != size) {
             verifier.append(*(data + size - 1));
         }
-        verifier.append(header->tot_len);
+        verifier.append(htons(size));
         verifier.append(header->protocol);
-        verifier.append(header->saddr / 0x10000);
-        verifier.append(header->saddr % 0x10000);
-        verifier.append(header->daddr / 0x10000);
-        verifier.append(header->daddr % 0x10000);
+        verifier.append(header->saddr >> 16);
+        verifier.append(header->saddr & 0xFFFF);
+        verifier.append(header->daddr >> 16);
+        verifier.append(header->daddr % 0xFFFF);
         return verifier.verify();
     }
 public:
