@@ -1,5 +1,6 @@
 #include "Processor.h"
 #include <iostream>
+#include <filesystem>
 using namespace packpars;
 
 class PrintMetricsUtil {
@@ -36,7 +37,14 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 	try {
-		PrintMetricsUtil(Processor(argv[1]).process()).print();
+		for(const auto entry : std::filesystem::directory_iterator(argv[1])) {
+			const std::filesystem::path path(entry);
+			if(entry.is_regular_file() && path.extension() == ".pcap") {
+				std::cout << "File " << path.filename() << std::endl;
+				PrintMetricsUtil(Processor(path.native()).process()).print();
+				std::cout << std::endl;
+			}
+		}
 	}
 	catch(const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
