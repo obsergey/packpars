@@ -99,7 +99,8 @@ public:
     bool verify() const {
         T sum = *(reinterpret_cast<const T*>(&acc_) + 1);
         sum += static_cast<T>(acc_);
-        return sum ^ 0;
+        sum = ~sum;
+        return sum == 0;
     }
 };
 
