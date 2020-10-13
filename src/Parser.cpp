@@ -126,7 +126,7 @@ public:
 };
 
 class L4ChecksumParser : public Parser {
-    uint64_t count_;
+    uint64_t count_{};
     static bool verify(const iphdr* header, const u_char* data, size_t size) {
         ChecksumVerifier<uint16_t, uint32_t> verifier;
         const uint16_t* d = reinterpret_cast<const uint16_t*>(data);
