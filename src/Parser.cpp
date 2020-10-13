@@ -69,8 +69,8 @@ public:
         dst_.insert(macToUint64(header->h_dest));
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({14, "Unique source mac-address", src_.size() });
-        metrics.push_back({15, "Unique destination mac-address", dst_.size() });
+        metrics.push_back({14, "Unique src mac", src_.size() });
+        metrics.push_back({15, "Unique dst mac", dst_.size() });
     }
 };
 
@@ -84,8 +84,8 @@ public:
         dst_.insert(header->daddr);
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({16, "Unique source ip-address", src_.size() });
-        metrics.push_back({17, "Unique destination ip-address", dst_.size() });
+        metrics.push_back({16, "Unique src ip", src_.size() });
+        metrics.push_back({17, "Unique dst ip", dst_.size() });
     }
 };
 
@@ -233,8 +233,8 @@ public:
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
         Parser::metrics(metrics);
-        metrics.push_back({18, "Unique source port", src_.size() });
-        metrics.push_back({19, "Unique destination port", dst_.size() });
+        metrics.push_back({18, "Unique src port", src_.size() });
+        metrics.push_back({19, "Unique dst port", dst_.size() });
     }
 };
 
