@@ -8,7 +8,7 @@ namespace packpars {
 class Processor {
     pcap_t* pcap_;
 public:
-    Processor(const std::string& filename);
+    explicit Processor(std::string_view filename);
     ~Processor();
     std::list<Metric> process();
 };

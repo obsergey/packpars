@@ -8,11 +8,16 @@ void processorCallback(u_char *args, const struct pcap_pkthdr* pkthdr, const u_c
     reinterpret_cast<Parser*>(args)->process(packet, pkthdr->len);
 }
 
-Processor::Processor(const std::string& filename) :
+Processor::Processor(std::string_view filename) :
     pcap_(pcap_open_offline(filename.data(), nullptr)) {}
 
 Processor::~Processor() {
-    pcap_close(pcap_);
+    try {
+        pcap_close(pcap_);
+    }
+    catch(...) {
+        // log exception in destructor here
+    }
 }
 
 std::list<Metric> Processor::process() {

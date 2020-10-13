@@ -10,8 +10,8 @@ class Parser {
     Parser* parent_;
 public:
     static std::unique_ptr<Parser> common();
-    Parser(Parser* parent = nullptr);
-    ~Parser();
+    explicit Parser(Parser* parent = nullptr);
+    virtual ~Parser();
     Parser(const Parser&) = delete;
     Parser& operator=(const Parser&) = delete;
     virtual void process(const u_char* packet, size_t size);

@@ -17,8 +17,8 @@ inline bool operator<(const std::pair<size_t, packpars::Parser*>& lhs, size_t rh
 class CounterParser : public Parser {
     Metric metric_;
 public:
-    CounterParser(size_t order, const std::string& desc, Parser* parent) :
-        Parser(parent), metric_{order, desc} {}        
+    CounterParser(size_t order, std::string_view desc, Parser* parent) :
+        Parser(parent), metric_(order, desc, 0) {}        
     virtual void process(const u_char* , size_t) override {
         metric_.value++;
     }
@@ -30,19 +30,19 @@ public:
 class SummaryLengthParser : public Parser {
     uint64_t length_{};
 public:
-    SummaryLengthParser(Parser* parent) : Parser(parent) {}
+    explicit SummaryLengthParser(Parser* parent) : Parser(parent) {}
     virtual void process(const u_char* , size_t size) override {
         length_ += size;
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({1, "Summary length", length_ });
+        metrics.emplace_back(1, "Summary length", length_);
     }
 };
 
 class SizeParser : public Parser {
     std::vector<std::pair<size_t, Parser*>> ranges_;
 public:
-    SizeParser(Parser* parent) : Parser(parent), ranges_{
+    explicit SizeParser(Parser* parent) : Parser(parent), ranges_{
         { 64, new CounterParser(2, "Size <= 64", this) },
         { 255, new CounterParser(3, "Size 65 - 255", this) },
         { 511, new CounterParser(4, "Size 256 - 511", this) },
@@ -62,30 +62,30 @@ class MacParser : public Parser {
             (uint64_t(*reinterpret_cast<const uint16_t*>(data + 4)) << 32);
     }
 public:
-    MacParser(Parser* parent) : Parser(parent) {}
+    explicit MacParser(Parser* parent) : Parser(parent) {}
     virtual void process(const u_char* packet, size_t size) override {
         const ethhdr* header = reinterpret_cast<const ethhdr*>(packet);
         src_.insert(macToUint64(header->h_source));
         dst_.insert(macToUint64(header->h_dest));
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({14, "Unique src mac", src_.size() });
-        metrics.push_back({15, "Unique dst mac", dst_.size() });
+        metrics.emplace_back(14, "Unique src mac", src_.size());
+        metrics.emplace_back(15, "Unique dst mac", dst_.size());
     }
 };
 
 class IpAddressParser : public Parser {
     std::unordered_set<uint32_t> src_, dst_;
 public:
-    IpAddressParser(Parser* parent) : Parser(parent) {}
+    explicit IpAddressParser(Parser* parent) : Parser(parent) {}
     virtual void process(const u_char* packet, size_t size) override {
         const iphdr* header = reinterpret_cast<const iphdr*>(packet);
         src_.insert(header->saddr);
         dst_.insert(header->daddr);
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({16, "Unique src ip", src_.size() });
-        metrics.push_back({17, "Unique dst ip", dst_.size() });
+        metrics.emplace_back(16, "Unique src ip", src_.size());
+        metrics.emplace_back(17, "Unique dst ip", dst_.size());
     }
 };
 
@@ -114,14 +114,14 @@ class L3ChecksumParser : public Parser {
         return verifier.verify(); 
     }
 public:
-    L3ChecksumParser(Parser* parent) : Parser(parent) {}
+    explicit L3ChecksumParser(Parser* parent) : Parser(parent) {}
     virtual void process(const u_char* packet, size_t size) override {
         if(verify(packet, sizeof(iphdr))) {
             count_++;
         }
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({27, "Correct L3 checksum", count_ });
+        metrics.emplace_back(27, "Correct L3 checksum", count_);
     }
 };
 
@@ -146,7 +146,7 @@ class L4ChecksumParser : public Parser {
         return verifier.verify();
     }
 public:
-    L4ChecksumParser(Parser* parent) : Parser(parent) {}
+    explicit L4ChecksumParser(Parser* parent) : Parser(parent) {}
     virtual void process(const u_char* packet, size_t size) override {
         const iphdr* header = reinterpret_cast<const iphdr*>(packet);
         const uint16_t total = ntohs(header->tot_len);
@@ -156,7 +156,7 @@ public:
         }
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
-        metrics.push_back({29, "Correct L4 checksum", count_ });
+        metrics.emplace_back(28, "Correct L4 checksum", count_);
     }
 };
 
@@ -164,7 +164,7 @@ class TcpFlagsParser : public Parser {
     std::unordered_map<uint8_t, Parser*> flags_;
     Parser* other_;
 public:
-    TcpFlagsParser(Parser* parent) : Parser(parent), flags_{
+    explicit TcpFlagsParser(Parser* parent) : Parser(parent), flags_{
         { TH_SYN, new CounterParser(20, "Tcp flags SYN", this) },
         { TH_SYN | TH_ACK, new CounterParser(21, "Tcp flags SYN + ACK", this) },
         { TH_ACK, new CounterParser(22, "Tcp flags ACK", this) },
@@ -218,7 +218,7 @@ class L4ProtocolParser : public Parser {
     std::unordered_map<uint8_t, Parser*> protos_;
     Parser* other_;
 public:
-    L4ProtocolParser(Parser* parent) : Parser(parent), protos_{
+    explicit L4ProtocolParser(Parser* parent) : Parser(parent), protos_{
         { IPPROTO_TCP, new TcpParser(src_, dst_, this) },
         { IPPROTO_UDP, new UdpParser(src_, dst_, this) },
         { IPPROTO_ICMP, new CounterParser(12, "Protocol ICMP", this) }
@@ -233,14 +233,14 @@ public:
     }
     virtual void metrics(std::list<Metric>& metrics) const override {
         Parser::metrics(metrics);
-        metrics.push_back({18, "Unique src port", src_.size() });
-        metrics.push_back({19, "Unique dst port", dst_.size() });
+        metrics.emplace_back(18, "Unique src port", src_.size());
+        metrics.emplace_back(19, "Unique dst port", dst_.size());
     }
 };
 
 class IpParser : public Parser {
 public:
-    IpParser(Parser* parent) : Parser(parent) {
+    explicit IpParser(Parser* parent) : Parser(parent) {
         new CounterParser(8, "Protocol IPv4", this);
         new IpAddressParser(this);
         new L3ChecksumParser(this);
@@ -257,7 +257,7 @@ public:
 class L3ProtocolParser : public Parser {
     Parser *ip_, *other_;
 public:
-    L3ProtocolParser(Parser* parent) : Parser(parent),
+    explicit L3ProtocolParser(Parser* parent) : Parser(parent),
         ip_(new IpParser(this)), other_(new CounterParser(9, "Protocol Non-IPv4", this)) {}
     virtual void process(const u_char* packet, size_t size) override {
         const uint16_t proto = ntohs(reinterpret_cast<const ethhdr*>(packet)->h_proto);
@@ -267,7 +267,7 @@ public:
 
 class EtherParser : public Parser {
 public:
-    EtherParser(Parser* parent = nullptr) : Parser(parent) {
+    explicit EtherParser(Parser* parent = nullptr) : Parser(parent) {
         new CounterParser(0, "Total count", this);
         new SummaryLengthParser(this);
         new SizeParser(this);
@@ -292,13 +292,18 @@ Parser::Parser(Parser* parent) : parent_(parent) {
 }
 
 Parser::~Parser() {
-    if(parent_) {
-        parent_->children_.remove(this);
+    try {
+        if(parent_) {
+            parent_->children_.remove(this);
+        }
+        // children_ list will be changed when children are deleted
+        // iterate over copy of children_ list
+        for(const Parser* child : std::list<Parser*>(children_)) {
+            delete child;
+        }
     }
-    // children_ list will be changed when children are deleted
-    // iterate over copy of children_ list
-    for(const Parser* child : std::list<Parser*>(children_)) {
-        delete child;
+    catch(...) {
+        // log exception in destructor here
     }
 }
 
