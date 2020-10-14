@@ -219,6 +219,8 @@ class L4ProtocolParser : public Parser {
     Parser* other_;
 public:
     explicit L4ProtocolParser(Parser* parent) : Parser(parent), protos_{
+        // using raw references to src_, dst_ is safe, so L4ProtocolParser
+        // lives longer than TcpParser and UdpParser
         { IPPROTO_TCP, new TcpParser(src_, dst_, this) },
         { IPPROTO_UDP, new UdpParser(src_, dst_, this) },
         { IPPROTO_ICMP, new CounterParser(12, "Protocol ICMP", this) }
