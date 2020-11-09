@@ -131,7 +131,7 @@ class L4ChecksumParser : public Parser {
         ChecksumVerifier<uint16_t, uint32_t> verifier;
         const uint16_t* d = reinterpret_cast<const uint16_t*>(data);
         const size_t ds = size / 2;
-        for(int i = 0; i < ds; i++) {
+        for(size_t i = 0; i < ds; i++) {
             verifier.append(d[i]);
         }
         if(ds * 2 != size) {
