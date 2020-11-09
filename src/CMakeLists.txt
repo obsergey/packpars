@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.7)
 project(packpars)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "-Wall -Werror")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic -Werror")
 
 include(FindPCAP.cmake)
 
