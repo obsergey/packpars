@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/packpars",
-            "args": ["test"],
+            "args": ["test/capt_Safe-Reset_302_pic.pcap"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
