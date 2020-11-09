@@ -63,7 +63,7 @@ class MacParser : public Parser {
     }
 public:
     explicit MacParser(Parser* parent) : Parser(parent) {}
-    virtual void process(const u_char* packet, size_t size) override {
+    virtual void process(const u_char* packet, size_t) override {
         const ethhdr* header = reinterpret_cast<const ethhdr*>(packet);
         src_.insert(macToUint64(header->h_source));
         dst_.insert(macToUint64(header->h_dest));
@@ -78,7 +78,7 @@ class IpAddressParser : public Parser {
     std::unordered_set<uint32_t> src_, dst_;
 public:
     explicit IpAddressParser(Parser* parent) : Parser(parent) {}
-    virtual void process(const u_char* packet, size_t size) override {
+    virtual void process(const u_char* packet, size_t) override {
         const iphdr* header = reinterpret_cast<const iphdr*>(packet);
         src_.insert(header->saddr);
         dst_.insert(header->daddr);
@@ -115,7 +115,7 @@ class L3ChecksumParser : public Parser {
     }
 public:
     explicit L3ChecksumParser(Parser* parent) : Parser(parent) {}
-    virtual void process(const u_char* packet, size_t size) override {
+    virtual void process(const u_char* packet, size_t) override {
         if(verify(packet, sizeof(iphdr))) {
             count_++;
         }
